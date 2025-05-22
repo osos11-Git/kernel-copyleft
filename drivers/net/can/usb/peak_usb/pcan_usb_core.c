@@ -26,6 +26,9 @@ MODULE_AUTHOR("Stephane Grosjean <s.grosjean@peak-system.com>");
 MODULE_DESCRIPTION("CAN driver for PEAK-System USB adapters");
 MODULE_LICENSE("GPL v2");
 
+static LIST_HEAD(peak_usb_device_list);
+static DEFINE_MUTEX(peak_usb_device_lock);
+
 /* Table of devices that work with this driver */
 static const struct usb_device_id peak_usb_table[] = {
 	{
@@ -927,6 +930,8 @@ static int peak_usb_create_dev(const struct peak_usb_adapter *peak_usb_adapter,
 
 	netdev_info(netdev, "attached to %s channel %u (device %u)\n",
 			peak_usb_adapter->name, ctrl_idx, dev->device_number);
+			
+	list_add_tail(&dev->list, &peak_usb_device_list);
 
 	return 0;
 
@@ -973,6 +978,8 @@ static void peak_usb_disconnect(struct usb_interface *intf)
 
 		free_candev(netdev);
 		dev_info(&intf->dev, "%s removed\n", name);
+		
+		list_del(&dev->list);
 	}
 
 	usb_set_intfdata(intf, NULL);
@@ -1030,7 +1037,7 @@ static int __init peak_usb_init(void)
 	return err;
 }
 
-static int peak_usb_do_device_exit(struct device *d, void *arg)
+static int __maybe_unused peak_usb_do_device_exit(struct device *d, void *arg)
 {
 	struct usb_interface *intf = to_usb_interface(d);
 	struct peak_usb_device *dev;
@@ -1049,14 +1056,14 @@ static int peak_usb_do_device_exit(struct device *d, void *arg)
 
 static void __exit peak_usb_exit(void)
 {
-	int err;
+	struct peak_usb_device *dev, *tmp;
 
-	/* last chance do send any synchronous commands here */
-	err = driver_for_each_device(&peak_usb_driver.drvwrap.driver, NULL,
-				     NULL, peak_usb_do_device_exit);
-	if (err)
-		pr_err("%s: failed to stop all can devices (err %d)\n",
-			PCAN_USB_DRIVER_NAME, err);
+	mutex_lock(&peak_usb_device_lock);
+	list_for_each_entry_safe(dev, tmp, &peak_usb_device_list, list) {
+		if (dev->adapter && dev->adapter->dev_exit)
+			dev->adapter->dev_exit(dev);
+	}
+	mutex_unlock(&peak_usb_device_lock);
 
 	/* deregister this driver with the USB subsystem */
 	usb_deregister(&peak_usb_driver);

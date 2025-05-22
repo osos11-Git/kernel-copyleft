@@ -1738,6 +1738,13 @@ static int es58x_alloc_rx_urbs(struct es58x_device *es58x_dev)
 	return ret;
 }
 
+static int my_usb_wait_anchor_empty_timeout(struct usb_anchor *anchor, unsigned int timeout)
+{
+	return wait_event_timeout(anchor->wait,
+				  list_empty(&anchor->urb_list),
+				  msecs_to_jiffies(timeout));
+}
+
 /**
  * es58x_free_urbs() - Free all the TX and RX URBs.
  * @es58x_dev: ES58X device.
@@ -1746,7 +1753,7 @@ static void es58x_free_urbs(struct es58x_device *es58x_dev)
 {
 	struct urb *urb;
 
-	if (!usb_wait_anchor_empty_timeout(&es58x_dev->tx_urbs_busy, 1000)) {
+	if (!my_usb_wait_anchor_empty_timeout(&es58x_dev->tx_urbs_busy, 1000)) {
 		dev_err(es58x_dev->dev, "%s: Timeout, some TX urbs still remain\n",
 			__func__);
 		usb_kill_anchored_urbs(&es58x_dev->tx_urbs_busy);

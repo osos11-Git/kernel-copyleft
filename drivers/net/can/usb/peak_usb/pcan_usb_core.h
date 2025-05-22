@@ -34,6 +34,8 @@
 /* maximum length of the usb commands sent to/received from the devices */
 #define PCAN_USB_MAX_CMD_LEN		32
 
+#include <linux/list.h>
+
 struct peak_usb_device;
 
 /* PEAK-System USB adapter descriptor */
@@ -114,6 +116,8 @@ struct peak_usb_device {
 
 	struct usb_device *udev;
 	struct net_device *netdev;
+	
+	struct list_head list;  /* tüm cihazları zincirlemek için */
 
 	atomic_t active_tx_urbs;
 	struct usb_anchor tx_submitted;
